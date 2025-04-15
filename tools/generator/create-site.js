@@ -10,16 +10,19 @@ const HEADERS = {
   'Authorization': `Bearer ${token}`,
 };
 
-export const ORG = 'nsw-pilot';
-const BLUEPRINT = 'blueprint';
-const COPY_FROM = `/${ORG}/${BLUEPRINT}/`;
+export const ORG = 'doe-app-svc';
+const PLACEHOLDERS_DIR = `/${ORG}/da-sws/configs/`;
+
+function getDestinationPath(siteName) {
+  return `/${ORG}/schools/${siteName.charAt(0).toLowerCase()}/${siteName}`;
+}
 
 function getConfig(siteName) {
   return {
     version: 1,
     content: {
       source: {
-        url: `https://content.da.live/nsw-pilot/${siteName}/`,
+        url: `https://content.da.live/nsw-pilot${getDestinationPath(siteName)}/`,
         type: 'markup',
       }
     },
@@ -27,6 +30,13 @@ function getConfig(siteName) {
       profile: 'nsw-schools',
     }
   }
+}
+
+export async function listPlaceholders() {
+  const res = await fetch(`${DA_ORIGIN}/list${PLACEHOLDERS_DIR}`, { method: 'GET' });
+  if (!res.ok) throw new Error(`Failed to list placeholders: ${res.statusText}`);
+  const data = await res.json();
+  return data;
 }
 
 async function createConfig(data) {
@@ -46,23 +56,27 @@ async function createConfig(data) {
 async function replaceTemplate(data) {
   const templatePaths = ['/index.html', '/nav.html', '/footer.html'];
 
+  const templateFilePath = `${DA_ORIGIN}/source${data.placeholder}`;
+  const templatesRes = await fetch(templateFilePath);
+  if (!templatesRes.ok) throw new Error(`Failed to fetch templates: ${templatesRes.statusText}`);
+  const templateFile = await templatesRes.json();
+
   await Promise.all(templatePaths.map(async (path) => {
     const daPath = `https://admin.da.live/source/${ORG}/${data.siteName}${path}`;
 
-    // get index
+    // get source to template
     const indexRes = await fetch(daPath);
     if (!indexRes.ok) throw new Error(`Failed to fetch index.html: ${indexRes.statusText}`);
 
     // replace template values
     const indexText = await indexRes.text();
-    const templatedText = indexText
-      .replaceAll('{{name-of-school}}', data.schoolName)
-      .replaceAll('{{school-tagline}}', data.schoolTagline)
-      .replaceAll('{{principal-name}}', data.principalName)
-      .replaceAll('{{principal-message}}', data.principalMessage);
-      
 
-    // update index
+    let templatedText = indexText;
+    templateFile.data.forEach(({key, value}) => {
+      templatedText = templatedText.replaceAll(key, value);
+    });
+
+    // update source
     const formData = new FormData();
     const blob = new Blob([templatedText], { type: 'text/html' });
     formData.set('data', blob);
@@ -74,7 +88,7 @@ async function replaceTemplate(data) {
 }
 
 async function previewOrPublishPages(data, action, setStatus) {
-  const parent = `/${ORG}/${data.siteName}`;
+  const parent = getDestinationPath(data.siteName);
 
   const label = action === 'preview' ? 'Previewing' : 'Publishing';
 
@@ -85,7 +99,7 @@ async function previewOrPublishPages(data, action, setStatus) {
     setStatus({ message: `${label}: ${item.path.replace(parent, '').replace('.html', '')}` });
     const aemPath = item.path.replace(parent, `${parent}/main`).replace('.html', '');
     const resp = await fetch(`${AEM_ORIGIN}/${action}${aemPath}`, opts);
-    if (!resp.ok) throw new Error({ type: 'error', message: `Could not preview ${aemPath}` });
+    if (!resp.ok) throw new Error(`Could not preview ${aemPath}`);
   }
 
   // Get the library
@@ -97,21 +111,28 @@ async function previewOrPublishPages(data, action, setStatus) {
 
 async function copyContent(data) {
   const formData = new FormData();
-  const destination = `/${ORG}/${data.siteName}`;
+  const destination = getDestinationPath(data.siteName);
 
-  formData.set('destination', `/${ORG}/${data.siteName}`);
+  formData.set('destination', destination);
 
   const opts = {  method: 'POST', body: formData };
 
   // TODO: Remove force delete. Copying tree doesn't seem to work
   const del = await fetch(`${DA_ORIGIN}/source${destination}`, { method: 'DELETE' });
 
-  const res = await fetch(`${DA_ORIGIN}/copy${COPY_FROM}`, opts);
+  const res = await fetch(`${DA_ORIGIN}/copy${data.blueprint}/`, opts);
 
   if (!res.ok) throw new Error(`Failed to copy content: ${res.statusText}`);
 }
 
+function checkAuth() {
+  if (!token || token === 'undefined') {
+    throw new Error('Please sign in.');
+  }
+}
+
 export async function createSite(data, setStatus) {
+  checkAuth();
   setStatus({ message: 'Copying content.' });
   await copyContent(data);
   setStatus({ message: 'Templating content.' });
