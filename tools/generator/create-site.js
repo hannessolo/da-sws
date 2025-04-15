@@ -32,8 +32,17 @@ function getConfig(siteName) {
   }
 }
 
+function getAuthHeaders() {
+  return {
+    'Authorization': `Bearer ${token}`,
+  };
+}
+
 export async function listPlaceholders() {
-  const res = await fetch(`${DA_ORIGIN}/list${PLACEHOLDERS_DIR}`, { method: 'GET' });
+  const res = await fetch(`${DA_ORIGIN}/list${PLACEHOLDERS_DIR}`, {
+    headers: getAuthHeaders(),
+    method: 'GET'
+  });
   if (!res.ok) throw new Error(`Failed to list placeholders: ${res.statusText}`);
   const data = await res.json();
   return data;
@@ -54,37 +63,44 @@ async function createConfig(data) {
 }
 
 async function replaceTemplate(data) {
-  const templatePaths = ['/index.html', '/nav.html', '/footer.html'];
-
   const templateFilePath = `${DA_ORIGIN}/source${data.placeholder}`;
-  const templatesRes = await fetch(templateFilePath);
+  const templatesRes = await fetch(templateFilePath, { headers: getAuthHeaders() });
   if (!templatesRes.ok) throw new Error(`Failed to fetch templates: ${templatesRes.statusText}`);
   const templateFile = await templatesRes.json();
 
-  await Promise.all(templatePaths.map(async (path) => {
-    const daPath = `https://admin.da.live/source/${ORG}/${data.siteName}${path}`;
+  const callback = async (item) => {
+    const daPath = `https://admin.da.live/source${item.path}`;
 
     // get source to template
-    const indexRes = await fetch(daPath);
-    if (!indexRes.ok) throw new Error(`Failed to fetch index.html: ${indexRes.statusText}`);
+    const sourceRes = await fetch(daPath, { headers: getAuthHeaders() });
+    if (!sourceRes.ok) throw new Error(`Failed to fetch index.html: ${sourceRes.statusText}`);
 
     // replace template values
-    const indexText = await indexRes.text();
+    const sourceText = await sourceRes.text();
 
-    let templatedText = indexText;
-    templateFile.data.forEach(({key, value}) => {
-      templatedText = templatedText.replaceAll(key, value);
+    let templatedText = sourceText;
+    templateFile.data.forEach(({key, value, Key, Value}) => {
+      // TODO better handling of upper/lowercase
+      if (key && value) {
+        templatedText = templatedText.replaceAll(`{{${key.trim()}}}`, value);
+      }
+      if (Key && Value) {
+        templatedText = templatedText.replaceAll(`{{${Key.trim()}}}`, Value);
+      }
     });
 
     // update source
     const formData = new FormData();
     const blob = new Blob([templatedText], { type: 'text/html' });
     formData.set('data', blob);
-    const updateRes = await fetch(daPath, { method: 'POST', body: formData });
+    const updateRes = await fetch(daPath, { method: 'POST', body: formData, headers: getAuthHeaders() });
     if (!updateRes.ok) {
       throw new Error(`Failed to update index.html: ${updateRes.statusText}`);
     }
-  }));
+  };
+
+  const { results } = crawl({ path: getDestinationPath(data.siteName), callback, concurrent: 5, throttle: 250 });
+  await results;
 }
 
 async function previewOrPublishPages(data, action, setStatus) {
@@ -115,10 +131,10 @@ async function copyContent(data) {
 
   formData.set('destination', destination);
 
-  const opts = {  method: 'POST', body: formData };
+  const opts = {  method: 'POST', body: formData, headers: getAuthHeaders() };
 
   // TODO: Remove force delete. Copying tree doesn't seem to work
-  const del = await fetch(`${DA_ORIGIN}/source${destination}`, { method: 'DELETE' });
+  const del = await fetch(`${DA_ORIGIN}/source${destination}`, { method: 'DELETE', headers: getAuthHeaders() });
 
   const res = await fetch(`${DA_ORIGIN}/copy${data.blueprint}/`, opts);
 

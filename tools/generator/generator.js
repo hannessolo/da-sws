@@ -8,7 +8,7 @@ const placeholders = (await listPlaceholders()).map((item) => ({
   label: item.name,
   value: item.path,
 }));
-const blueprints = [{label: 'Blueprint', value: '/nsw-pilot/blueprint'}];
+const blueprints = [{label: 'Blueprint', value: '/doe-app-svc/da-sws'}];
 
 const onOpenPlaceholder = (item) => {
   const url = `https://da.live/sheet#${item.value}`;
