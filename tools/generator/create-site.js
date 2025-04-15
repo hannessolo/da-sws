@@ -69,6 +69,8 @@ async function replaceTemplate(data) {
   const templateFile = await templatesRes.json();
 
   const callback = async (item) => {
+    if (!item.path.endsWith('.html')) return;
+
     const daPath = `https://admin.da.live/source${item.path}`;
 
     // get source to template
