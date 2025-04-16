@@ -2,6 +2,9 @@ import { crawl } from 'https://da.live/nx/public/utils/tree.js';
 import DA_SDK from 'https://da.live/nx/utils/sdk.js';
 const { token } = await DA_SDK;
 
+export const ORG = 'doe-app-svc';
+const PLACEHOLDERS_DIR = `/${ORG}/da-sws/configs/`;
+
 const DA_ORIGIN = 'https://admin.da.live';
 const AEM_ORIGIN = 'https://admin.hlx.page';
 
@@ -10,11 +13,8 @@ const HEADERS = {
   'Authorization': `Bearer ${token}`,
 };
 
-export const ORG = 'doe-app-svc';
-const PLACEHOLDERS_DIR = `/${ORG}/da-sws/configs/`;
-
 function getDestinationPath(siteName) {
-  return `/${ORG}/schools/${siteName.charAt(0).toLowerCase()}/${siteName}`;
+  return `/${ORG}/${siteName}`;
 }
 
 function getConfig(siteName) {
@@ -22,12 +22,12 @@ function getConfig(siteName) {
     version: 1,
     content: {
       source: {
-        url: `https://content.da.live/nsw-pilot${getDestinationPath(siteName)}/`,
+        url: `https://content.da.live/${ORG}/${siteName}/`,
         type: 'markup',
       }
     },
     extends: {
-      profile: 'nsw-schools',
+      profile: 'da-nsw-school',
     }
   }
 }
